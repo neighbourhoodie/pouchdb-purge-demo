@@ -1,0 +1,16 @@
+{
+  "name": "pouchdb-activetasks-test",
+  "version": "1.0.0",
+  "description": "",
+  "main": "pouchdb.js",
+  "scripts": {
+    "dev": "serve --symlinks",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "serve": "^13.0.2"
+  }
+}

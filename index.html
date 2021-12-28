@@ -1,0 +1,120 @@
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script src="pouchdb.js"></script>
+    <title>Document</title>
+  </head>
+  <body>
+    <h1>Hi</h1>
+    <script>
+      PouchDB.prototype.activeTasks.add = new Proxy(PouchDB.prototype.activeTasks.add, {
+        apply: (target, thisArg, argumentsList) => {
+          const task = argumentsList[0];
+          console.log(
+            `➕ Added Task "${task.name}" with ${task.total_items} total items`
+          );
+          return Reflect.apply(target, PouchDB.prototype.activeTasks, argumentsList);
+        },
+      });
+
+      PouchDB.prototype.activeTasks.update = new Proxy(PouchDB.prototype.activeTasks.update, {
+        apply: (target, thisArg, argumentsList) => {
+          const task = PouchDB.prototype.activeTasks.get(argumentsList[0]);
+          const durationInMilliseconds =
+            new Date().getTime() - new Date(task.created_at).getTime();
+          console.log(
+            `🖌️ Updated Task "${task.name}" (${task.id}) with ${
+              argumentsList[1].completed_items
+            }/${task.total_items} items after ${
+              durationInMilliseconds / 1000
+            } seconds`
+          );
+          return Reflect.apply(target, PouchDB.prototype.activeTasks, argumentsList);
+        },
+      });
+
+      PouchDB.prototype.activeTasks.remove = new Proxy(PouchDB.prototype.activeTasks.remove, {
+        apply: (target, thisArg, argumentsList) => {
+          const task = PouchDB.prototype.activeTasks.get(argumentsList[0]);
+          const durationInMilliseconds =
+            new Date(task.updated_at).getTime() -
+            new Date(task.created_at).getTime();
+          console.log(
+            `✅ Removed/Completed Task "${task.name}" (${task.id}) with ${
+              task.completed_items
+            }/${task.total_items} items after ${
+              durationInMilliseconds / 1000
+            } seconds`
+          );
+          return Reflect.apply(target, PouchDB.prototype.activeTasks, argumentsList);
+        },
+      });
+
+      function sleep(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+      }
+
+      async function runDummyTasks() {
+        const id1 = PouchDB.activeTasks.add({
+          name: "Task 1",
+          total_items: 12,
+        });
+        const id2 = PouchDB.activeTasks.add({
+          name: "Task 2",
+          total_items: 432,
+        });
+        const id3 = PouchDB.activeTasks.add({
+          name: "Task 3",
+          total_items: 12098,
+        });
+        await sleep(500);
+        PouchDB.activeTasks.update(id1, { completed_items: 1 });
+        PouchDB.activeTasks.update(id3, { completed_items: 1441 });
+        await sleep(1800);
+        PouchDB.activeTasks.update(id1, { completed_items: 2 });
+        PouchDB.activeTasks.update(id2, { completed_items: 144 });
+        await sleep(2200);
+        PouchDB.activeTasks.update(id3, { completed_items: 8441 });
+        PouchDB.activeTasks.update(id2, { completed_items: 223 });
+        await sleep(1900);
+        PouchDB.activeTasks.update(id1, { completed_items: 10 });
+        await sleep(500);
+        PouchDB.activeTasks.update(id1, { completed_items: 12 });
+        PouchDB.activeTasks.remove(id1);
+        PouchDB.activeTasks.update(id2, { completed_items: 423 });
+        await sleep(1100);
+        PouchDB.activeTasks.update(id3, { completed_items: 12001 });
+        await sleep(1050);
+        PouchDB.activeTasks.update(id2, { completed_items: 432 });
+        PouchDB.activeTasks.remove(id2);
+        await sleep(2100);
+        PouchDB.activeTasks.update(id3, { completed_items: 12098 });
+        PouchDB.activeTasks.remove(id3);
+      }
+
+      async function runCompactionTask(createDocs = false) {
+        const n = 100;
+        const name = "activeTasks-test";
+        const db = new PouchDB(name, { adapter: "idb" });
+
+        if (createDocs) {
+          for (let i = 0; i < n; i++) {
+            await db.put({
+              _id: `dummy-${i}`,
+              title: `Dummy item ${i}`,
+            });
+          }
+        }
+
+        console.log("Executing compaction...");
+        db._compact({}, () => {
+          console.log("Compaction finished.");
+        });
+      }
+
+      runCompactionTask();
+    </script>
+  </body>
+</html>
