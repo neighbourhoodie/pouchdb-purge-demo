@@ -1,2 +1,4 @@
 node_modules
 pouchdb.js
+pouchdb.indexeddb.js
+

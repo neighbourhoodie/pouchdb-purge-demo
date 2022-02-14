@@ -4,117 +4,317 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <script src="pouchdb.js"></script>
-    <title>Document</title>
+    <script src="pouchdb.indexeddb.js"></script>
+    <title>PouchDB purge feature demo</title>
   </head>
   <body>
     <h1>Hi</h1>
+
+    <ul id="docs">
+      <li>No docs</li>
+    </ul>
+    <br /><br />
+    <button onClick="handleCreate()">Create document</button><br /><br />
+    <button onClick="handleUpdate()">Update document</button>
+    <button onClick="handleDelete()">Delete document</button>
+    <input
+      type="text"
+      id="update-doc-id"
+      placeholder="Document ID"
+    /><br /><br />
+    <button onClick="handleView()">Create view</button>
+    <button onClick="handleQueryView()">Query view</button>
+    <input type="text" id="query-view-id" placeholder="View ID" /><br /><br />
+
+    <button onClick="handleEmpty()">Empty database</button>
+
     <script>
-      PouchDB.prototype.activeTasks.add = new Proxy(PouchDB.prototype.activeTasks.add, {
-        apply: (target, thisArg, argumentsList) => {
-          const task = argumentsList[0];
-          console.log(
-            `➕ Added Task "${task.name}" with ${task.total_items} total items`
-          );
-          return Reflect.apply(target, PouchDB.prototype.activeTasks, argumentsList);
-        },
-      });
+      let db,
+        db1,
+        db2,
+        i = 0;
+      const DB_NAME = "purge-demo";
+      const adapter = "indexeddb";
 
-      PouchDB.prototype.activeTasks.update = new Proxy(PouchDB.prototype.activeTasks.update, {
-        apply: (target, thisArg, argumentsList) => {
-          const task = PouchDB.prototype.activeTasks.get(argumentsList[0]);
-          const durationInMilliseconds =
-            new Date().getTime() - new Date(task.created_at).getTime();
-          console.log(
-            `🖌️ Updated Task "${task.name}" (${task.id}) with ${
-              argumentsList[1].completed_items
-            }/${task.total_items} items after ${
-              durationInMilliseconds / 1000
-            } seconds`
-          );
-          return Reflect.apply(target, PouchDB.prototype.activeTasks, argumentsList);
-        },
-      });
-
-      PouchDB.prototype.activeTasks.remove = new Proxy(PouchDB.prototype.activeTasks.remove, {
-        apply: (target, thisArg, argumentsList) => {
-          const task = PouchDB.prototype.activeTasks.get(argumentsList[0]);
-          const durationInMilliseconds =
-            new Date(task.updated_at).getTime() -
-            new Date(task.created_at).getTime();
-          console.log(
-            `✅ Removed/Completed Task "${task.name}" (${task.id}) with ${
-              task.completed_items
-            }/${task.total_items} items after ${
-              durationInMilliseconds / 1000
-            } seconds`
-          );
-          return Reflect.apply(target, PouchDB.prototype.activeTasks, argumentsList);
-        },
-      });
-
-      function sleep(ms) {
-        return new Promise((resolve) => setTimeout(resolve, ms));
+      async function clearDatabase(name) {
+        try {
+          const _db = new PouchDB(name, { adapter });
+          await _db.destroy();
+        } catch {}
       }
 
-      async function runDummyTasks() {
-        const id1 = PouchDB.activeTasks.add({
-          name: "Task 1",
-          total_items: 12,
-        });
-        const id2 = PouchDB.activeTasks.add({
-          name: "Task 2",
-          total_items: 432,
-        });
-        const id3 = PouchDB.activeTasks.add({
-          name: "Task 3",
-          total_items: 12098,
-        });
-        await sleep(500);
-        PouchDB.activeTasks.update(id1, { completed_items: 1 });
-        PouchDB.activeTasks.update(id3, { completed_items: 1441 });
-        await sleep(1800);
-        PouchDB.activeTasks.update(id1, { completed_items: 2 });
-        PouchDB.activeTasks.update(id2, { completed_items: 144 });
-        await sleep(2200);
-        PouchDB.activeTasks.update(id3, { completed_items: 8441 });
-        PouchDB.activeTasks.update(id2, { completed_items: 223 });
-        await sleep(1900);
-        PouchDB.activeTasks.update(id1, { completed_items: 10 });
-        await sleep(500);
-        PouchDB.activeTasks.update(id1, { completed_items: 12 });
-        PouchDB.activeTasks.remove(id1);
-        PouchDB.activeTasks.update(id2, { completed_items: 423 });
-        await sleep(1100);
-        PouchDB.activeTasks.update(id3, { completed_items: 12001 });
-        await sleep(1050);
-        PouchDB.activeTasks.update(id2, { completed_items: 432 });
-        PouchDB.activeTasks.remove(id2);
-        await sleep(2100);
-        PouchDB.activeTasks.update(id3, { completed_items: 12098 });
-        PouchDB.activeTasks.remove(id3);
+      /*
+       * 1-a - 2-a -- 3-a - 4-a - 5-a - 6-a
+       *           \           \
+       *            \            5-c - 6-c
+       *              3-b - 4-b
+       *
+       * three leaves: 6-a, 6-c, and 4-b.
+       * 6-a is the winning leaf.
+       *
+       * for a purge, we want to retrieve all *unique* revs from the given leaf until
+       * we find a branching (i.e., revs aren't unique anymore). with
+       * ```
+       *   db.get(docId, { open_revs: 'all' })
+       * ```
+       * we can at least check whether the given rev is a leaf or not.
+       */
+      async function createTree() {
+        try {
+          await clearDatabase("db1");
+          await clearDatabase("db2");
+
+          db1 = new PouchDB("db1", { adapter });
+          db2 = new PouchDB("db2", { adapter });
+          const docId = "something";
+
+          const doc_1a = await db1.put({ _id: docId, key: "1-a" });
+          const doc_2a = await db1.put({
+            _id: docId,
+            _rev: doc_1a.rev,
+            key: "2-a",
+          });
+
+          await PouchDB.sync(db1, db2);
+
+          const doc_3a = await db1.put({
+            _id: docId,
+            _rev: doc_2a.rev,
+            key: "3-a",
+          });
+          const doc_3b = await db2.put({
+            _id: docId,
+            _rev: doc_2a.rev,
+            key: "3-b",
+          });
+
+          const doc_4a = await db1.put({
+            _id: docId,
+            _rev: doc_3a.rev,
+            key: "4-a",
+          });
+          const doc_4b = await db2.put({
+            _id: docId,
+            _rev: doc_3b.rev,
+            key: "4-b",
+          });
+
+          await PouchDB.sync(db2, db1);
+
+          const doc_5a = await db1.put({
+            _id: docId,
+            _rev: doc_4a.rev,
+            key: "5-a",
+          });
+          const doc_6a = await db1.put({
+            _id: docId,
+            _rev: doc_5a.rev,
+            key: "6-a",
+          });
+
+          const doc_5b = await db2.put({
+            _id: docId,
+            _rev: doc_4a.rev,
+            key: "5-b",
+          });
+          const doc_6b = await db2.put({
+            _id: docId,
+            _rev: doc_5b.rev,
+            key: "6-b",
+          });
+
+          await PouchDB.sync(db2, db1);
+        } catch (err) {
+          console.error(err);
+        }
       }
 
-      async function runCompactionTask(createDocs = false) {
-        const n = 100;
-        const name = "activeTasks-test";
-        const db = new PouchDB(name, { adapter: "idb" });
+      async function handleCreate() {
+        await db.put({
+          _id: `dummy-${++i}`,
+          index: i,
+          title: `Dummy item ${i}`,
+        });
 
-        if (createDocs) {
-          for (let i = 0; i < n; i++) {
-            await db.put({
-              _id: `dummy-${i}`,
-              title: `Dummy item ${i}`,
-            });
-          }
+        await updateDocsList();
+      }
+
+      async function handleUpdate() {
+        const id = document.getElementById("update-doc-id").value;
+        if (!id) {
+          alert("Please enter a document ID.");
+          return;
         }
 
-        console.log("Executing compaction...");
-        db._compact({}, () => {
-          console.log("Compaction finished.");
-        });
+        const doc = await db.get(id);
+        if (!doc) {
+          alert(`Can\'t find doc ${doc}`);
+          return;
+        }
+        const newIndex = doc.index + 1000;
+        doc.index = newIndex;
+        doc.title = `Dummy item ${newIndex}`;
+        await db.put(doc);
+        await updateDocsList();
       }
 
-      runCompactionTask();
+      async function handleView() {
+        const ddoc = {
+          _id: `_design/my_index_${++i}`,
+          views: {
+            by_index: {
+              map: function (doc) {
+                emit(doc.index);
+              }.toString(),
+            },
+          },
+        };
+
+        await db.put(ddoc);
+        console.log(`Created view ${ddoc._id}`);
+      }
+
+      async function handleDelete() {
+        const id = document.getElementById("update-doc-id").value;
+        if (!id) {
+          alert("Please enter a document ID.");
+          return;
+        }
+
+        const doc = await db.get(id);
+        if (!doc) {
+          alert(`Can\'t find doc ${doc}`);
+          return;
+        }
+
+        await db.remove(doc);
+        await updateDocsList();
+      }
+
+      async function handleQueryView() {
+        const id = document.getElementById("query-view-id").value;
+        if (!id) {
+          alert("Please enter a view ID.");
+          return;
+        }
+
+        const results = await db.query(`${id}/by_index`, {
+          limit: 0, // don't return any results
+        });
+        console.log(results);
+      }
+
+      async function purge(docId, rev) {}
+
+      async function createAndPurge(opts = {}) {
+        const destroy =
+          typeof opts.destroy === "undefined" ? true : !!opts.destroy;
+
+        // create db
+        const name = `${DB_NAME}_${++i}`;
+        const db = new PouchDB(name, {
+          adapter: "indexeddb",
+        });
+        console.log(`~ ~ ~ created db: ${name}`);
+
+        // create doc
+        const docId = `dummy-${++i}`;
+        await db.put({
+          _id: docId,
+          index: i,
+          title: `Dummy item ${i}`,
+        });
+        const doc = await db.get(docId);
+        console.log("created doc id", doc._id, "rev", doc._rev);
+
+        // list all
+        console.log("~ ~ ~ all docs ~ ~ ~");
+        console.log(
+          await db.allDocs({
+            include_docs: true,
+          })
+        );
+
+        // create index & query for view update
+        const indexId = `my_index_${++i}`;
+        const ddoc = {
+          _id: `_design/${indexId}`,
+          views: {
+            by_index: {
+              map: function (doc) {
+                emit(doc.index);
+              }.toString(),
+            },
+          },
+        };
+        await db.put(ddoc);
+        console.log(`~ ~ ~ created view: ${indexId}`);
+
+        // update view
+        console.log("~ ~ ~ view query result:");
+        console.log(
+          await db.query(`${indexId}/by_index`, {
+            limit: 0, // don't return any results
+          })
+        );
+
+        // do the purge
+        console.log(await db._purge(doc._id, doc._rev));
+
+        // update view
+        console.log("~ ~ ~ view query result:");
+        console.log(
+          await db.query(`${indexId}/by_index`, {
+            limit: 0, // don't return any results
+          })
+        );
+
+        // list all
+        console.log("~ ~ ~ all docs ~ ~ ~");
+        console.log(
+          await db.allDocs({
+            include_docs: true,
+          })
+        );
+
+        if (destroy) {
+          console.log("~ ~ ~  cleaning up");
+          db.destroy();
+        }
+
+        return db;
+      }
+
+      async function handleEmpty() {
+        await db.destroy();
+        db = new PouchDB(DB_NAME, { adapter: "indexeddb" });
+        console.log("Created new db with adapter", db.adapter);
+        await updateDocsList();
+      }
+
+      async function updateDocsList() {
+        const container = document.getElementById("docs");
+        const docs = (
+          await db.allDocs({
+            include_docs: true,
+          })
+        ).rows;
+
+        container.innerHTML = docs
+          .map(
+            (result) => `<li><pre>${JSON.stringify(result, null, 2)}</pre></li>`
+          )
+          .join("");
+      }
+
+      async function main() {
+        db = new PouchDB(DB_NAME, { adapter: "indexeddb" });
+
+        await handleEmpty();
+        await updateDocsList();
+      }
+
+      // main();
     </script>
   </body>
 </html>
