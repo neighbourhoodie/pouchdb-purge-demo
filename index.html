@@ -43,6 +43,38 @@
         } catch {}
       }
 
+      function findPathToLeaf(revs, targetRev) {
+        var path = [];
+        var toVisit = revs.slice();
+
+        var node;
+        while ((node = toVisit.pop())) {
+          var pos = node.pos;
+          var tree = node.ids;
+          var rev = `${pos}-${tree[0]}`;
+          path.push(rev);
+          var branches = tree[2];
+          if (rev === targetRev) return path;
+          if (branches.length === 0) {
+            path = [];
+          }
+          for (var i = 0, len = branches.length; i < len; i++) {
+            toVisit.push({ pos: pos + 1, ids: branches[i] });
+          }
+        }
+        return path;
+      }
+
+      function attemptPurge() {
+        db1._getRevisionTree("something", (whatever, revs) => {
+          const path = findPathToLeaf(
+            revs,
+            "6-2d0ab4f4089a57c95d52bfd2d66b823d"
+          );
+          console.log("path", path);
+        });
+      }
+
       /*
        * 1-a - 2-a -- 3-a - 4-a - 5-a - 6-a
        *           \           \
