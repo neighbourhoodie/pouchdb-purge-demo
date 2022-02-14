@@ -5,35 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <script src="pouchdb.js"></script>
     <script src="pouchdb.indexeddb.js"></script>
-    <title>PouchDB purge feature demo</title>
+    <title>PouchDB purge demo</title>
   </head>
   <body>
-    <h1>Hi</h1>
+    <h1>PouchDB purge demo</h1>
 
-    <ul id="docs">
-      <li>No docs</li>
-    </ul>
-    <br /><br />
-    <button onClick="handleCreate()">Create document</button><br /><br />
-    <button onClick="handleUpdate()">Update document</button>
-    <button onClick="handleDelete()">Delete document</button>
-    <input
-      type="text"
-      id="update-doc-id"
-      placeholder="Document ID"
-    /><br /><br />
-    <button onClick="handleView()">Create view</button>
-    <button onClick="handleQueryView()">Query view</button>
-    <input type="text" id="query-view-id" placeholder="View ID" /><br /><br />
-
-    <button onClick="handleEmpty()">Empty database</button>
+    <p>
+      In your browser console, run <code>createTree()</code> to create an
+      example document with conflicts and respective rev tree branches. The tree
+      structure will be written to the console. With
+      <code>attemptPurge(revHash)</code>, you can attempt to do a purge on that
+      rev. Refer to the current implementation to learn about the progress of
+      that function.
+    </p>
 
     <script>
-      let db,
-        db1,
+      let db1,
         db2,
         i = 0;
-      const DB_NAME = "purge-demo";
       const adapter = "indexeddb";
 
       async function clearDatabase(name) {
@@ -44,33 +33,42 @@
       }
 
       function findPathToLeaf(revs, targetRev) {
-        var path = [];
-        var toVisit = revs.slice();
+        // `revs` has the same structure as what `revs_tree` has on e.g. the IndexedDB representation
+        // of the rev tree datastructure.
+        let path = [];
+        const toVisit = revs.slice();
 
-        var node;
+        let node;
         while ((node = toVisit.pop())) {
-          var pos = node.pos;
-          var tree = node.ids;
-          var rev = `${pos}-${tree[0]}`;
+          const { pos, ids: tree } = node;
+          const rev = `${pos}-${tree[0]}`;
+          const branches = tree[2];
+
+          // just assuming we're already working on the path up towards our desired leaf.
           path.push(rev);
-          var branches = tree[2];
+
+          // we've reached the leaf of our dreams, so return the computed path.
           if (rev === targetRev) return path;
-          if (branches.length === 0) {
+
+          // this is based on the assumption that after we have a leaf (`branches.length == 0`), we handle the next
+          // branch. this is true for all branches other than the path leading to the winning rev (which is 6-a in
+          // the example below. i've added a reset condition for branching nodes (`branches.length > 1`) as well.
+          if (branches.length === 0 || branches.length > 1) {
             path = [];
           }
-          for (var i = 0, len = branches.length; i < len; i++) {
+
+          // as a next step, we push the branches of this node to `toVisit` for visiting it during the next iteration
+          for (let i = 0, len = branches.length; i < len; i++) {
             toVisit.push({ pos: pos + 1, ids: branches[i] });
           }
         }
-        return path;
+        return path.reverse();
       }
 
-      function attemptPurge() {
+      // attempt to purge the doc used in the example below with a given rev.
+      function attemptPurge(rev = "6-2d0ab4f4089a57c95d52bfd2d66b823d") {
         db1._getRevisionTree("something", (whatever, revs) => {
-          const path = findPathToLeaf(
-            revs,
-            "6-2d0ab4f4089a57c95d52bfd2d66b823d"
-          );
+          const path = findPathToLeaf(revs, rev);
           console.log("path", path);
         });
       }
@@ -83,13 +81,6 @@
        *
        * three leaves: 6-a, 6-c, and 4-b.
        * 6-a is the winning leaf.
-       *
-       * for a purge, we want to retrieve all *unique* revs from the given leaf until
-       * we find a branching (i.e., revs aren't unique anymore). with
-       * ```
-       *   db.get(docId, { open_revs: 'all' })
-       * ```
-       * we can at least check whether the given rev is a leaf or not.
        *
        * ~ ~ ~
        *
@@ -192,193 +183,6 @@ Individual rev hashes:
           console.error(err);
         }
       }
-
-      async function handleCreate() {
-        await db.put({
-          _id: `dummy-${++i}`,
-          index: i,
-          title: `Dummy item ${i}`,
-        });
-
-        await updateDocsList();
-      }
-
-      async function handleUpdate() {
-        const id = document.getElementById("update-doc-id").value;
-        if (!id) {
-          alert("Please enter a document ID.");
-          return;
-        }
-
-        const doc = await db.get(id);
-        if (!doc) {
-          alert(`Can\'t find doc ${doc}`);
-          return;
-        }
-        const newIndex = doc.index + 1000;
-        doc.index = newIndex;
-        doc.title = `Dummy item ${newIndex}`;
-        await db.put(doc);
-        await updateDocsList();
-      }
-
-      async function handleView() {
-        const ddoc = {
-          _id: `_design/my_index_${++i}`,
-          views: {
-            by_index: {
-              map: function (doc) {
-                emit(doc.index);
-              }.toString(),
-            },
-          },
-        };
-
-        await db.put(ddoc);
-        console.log(`Created view ${ddoc._id}`);
-      }
-
-      async function handleDelete() {
-        const id = document.getElementById("update-doc-id").value;
-        if (!id) {
-          alert("Please enter a document ID.");
-          return;
-        }
-
-        const doc = await db.get(id);
-        if (!doc) {
-          alert(`Can\'t find doc ${doc}`);
-          return;
-        }
-
-        await db.remove(doc);
-        await updateDocsList();
-      }
-
-      async function handleQueryView() {
-        const id = document.getElementById("query-view-id").value;
-        if (!id) {
-          alert("Please enter a view ID.");
-          return;
-        }
-
-        const results = await db.query(`${id}/by_index`, {
-          limit: 0, // don't return any results
-        });
-        console.log(results);
-      }
-
-      async function purge(docId, rev) {}
-
-      async function createAndPurge(opts = {}) {
-        const destroy =
-          typeof opts.destroy === "undefined" ? true : !!opts.destroy;
-
-        // create db
-        const name = `${DB_NAME}_${++i}`;
-        const db = new PouchDB(name, {
-          adapter: "indexeddb",
-        });
-        console.log(`~ ~ ~ created db: ${name}`);
-
-        // create doc
-        const docId = `dummy-${++i}`;
-        await db.put({
-          _id: docId,
-          index: i,
-          title: `Dummy item ${i}`,
-        });
-        const doc = await db.get(docId);
-        console.log("created doc id", doc._id, "rev", doc._rev);
-
-        // list all
-        console.log("~ ~ ~ all docs ~ ~ ~");
-        console.log(
-          await db.allDocs({
-            include_docs: true,
-          })
-        );
-
-        // create index & query for view update
-        const indexId = `my_index_${++i}`;
-        const ddoc = {
-          _id: `_design/${indexId}`,
-          views: {
-            by_index: {
-              map: function (doc) {
-                emit(doc.index);
-              }.toString(),
-            },
-          },
-        };
-        await db.put(ddoc);
-        console.log(`~ ~ ~ created view: ${indexId}`);
-
-        // update view
-        console.log("~ ~ ~ view query result:");
-        console.log(
-          await db.query(`${indexId}/by_index`, {
-            limit: 0, // don't return any results
-          })
-        );
-
-        // do the purge
-        console.log(await db._purge(doc._id, doc._rev));
-
-        // update view
-        console.log("~ ~ ~ view query result:");
-        console.log(
-          await db.query(`${indexId}/by_index`, {
-            limit: 0, // don't return any results
-          })
-        );
-
-        // list all
-        console.log("~ ~ ~ all docs ~ ~ ~");
-        console.log(
-          await db.allDocs({
-            include_docs: true,
-          })
-        );
-
-        if (destroy) {
-          console.log("~ ~ ~  cleaning up");
-          db.destroy();
-        }
-
-        return db;
-      }
-
-      async function handleEmpty() {
-        await db.destroy();
-        db = new PouchDB(DB_NAME, { adapter: "indexeddb" });
-        console.log("Created new db with adapter", db.adapter);
-        await updateDocsList();
-      }
-
-      async function updateDocsList() {
-        const container = document.getElementById("docs");
-        const docs = (
-          await db.allDocs({
-            include_docs: true,
-          })
-        ).rows;
-
-        container.innerHTML = docs
-          .map(
-            (result) => `<li><pre>${JSON.stringify(result, null, 2)}</pre></li>`
-          )
-          .join("");
-      }
-
-      async function main() {
-        db = new PouchDB(DB_NAME, { adapter: "indexeddb" });
-
-        await handleEmpty();
-        await updateDocsList();
-      }
-
-      // main();
     </script>
   </body>
 </html>
