@@ -58,6 +58,20 @@
        *   db.get(docId, { open_revs: 'all' })
        * ```
        * we can at least check whether the given rev is a leaf or not.
+       *
+       * ~ ~ ~
+       *
+       * rev hashes:
+       * 1-a 1-9692d401ed2d3434827608278bdc36e3
+       * 2-a 2-37aa033df08c21b4f56f1da2081e9e00
+       * 3-a 3-df226cb9a2e5bdd3e6be009fd51f47c1
+       * 4-a 4-6e94d345514a08620c3176eea080d3ec
+       * 5-a 5-df4a81cd21c75c71974d96e88a68fc2f
+       * 6-a 6-3f7f6c55c27bf54c009b661607a9fe05 leaf
+       * 5-c 5-0b84bfea5508e2020feb07384714a987
+       * 6-c 6-2d0ab4f4089a57c95d52bfd2d66b823d leaf
+       * 3-b 3-43f6d5557d6de39488c64bb2c684ae7c
+       * 4-b 4-a3b44168027079c2692a7d8eb35e9643 leaf
        */
       async function createTree() {
         try {
@@ -67,6 +81,24 @@
           db1 = new PouchDB("db1", { adapter });
           db2 = new PouchDB("db2", { adapter });
           const docId = "something";
+
+          console.log(`Building the following rev tree for doc \`${docId}\`:
+1-a - 2-a -- 3-a - 4-a - 5-a - 6-a
+          \\            \\
+           \\             5-c - 6-c
+             3-b - 4-b
+
+Individual rev hashes:
+1-a 1-9692d401ed2d3434827608278bdc36e3
+2-a 2-37aa033df08c21b4f56f1da2081e9e00
+3-a 3-df226cb9a2e5bdd3e6be009fd51f47c1
+4-a 4-6e94d345514a08620c3176eea080d3ec
+5-a 5-df4a81cd21c75c71974d96e88a68fc2f
+6-a 6-3f7f6c55c27bf54c009b661607a9fe05 leaf
+5-c 5-0b84bfea5508e2020feb07384714a987
+6-c 6-2d0ab4f4089a57c95d52bfd2d66b823d leaf
+3-b 3-43f6d5557d6de39488c64bb2c684ae7c
+4-b 4-a3b44168027079c2692a7d8eb35e9643 leaf`);
 
           const doc_1a = await db1.put({ _id: docId, key: "1-a" });
           const doc_2a = await db1.put({
