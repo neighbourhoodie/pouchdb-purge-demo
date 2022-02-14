@@ -48,7 +48,7 @@
           path.push(rev);
 
           // we've reached the leaf of our dreams, so return the computed path.
-          if (rev === targetRev) return path;
+          if (rev === targetRev) return path.reverse();
 
           // this is based on the assumption that after we have a leaf (`branches.length == 0`), we handle the next
           // branch. this is true for all branches other than the path leading to the winning rev (which is 6-a in
@@ -66,10 +66,23 @@
       }
 
       // attempt to purge the doc used in the example below with a given rev.
-      function attemptPurge(rev = "6-2d0ab4f4089a57c95d52bfd2d66b823d") {
-        db1._getRevisionTree("something", (whatever, revs) => {
-          const path = findPathToLeaf(revs, rev);
-          console.log("path", path);
+      async function attemptPurge(rev = "6-3f7f6c55c27bf54c009b661607a9fe05") {
+        const docId = "something";
+
+        return new Promise((resolve, reject) => {
+          db1._getRevisionTree(docId, async (whatever, revs) => {
+            // get the path from the leaf to the latest node before a branching occurs
+            const path = findPathToLeaf(revs, rev);
+            console.log("path", path);
+
+            // now, iterate over each rev and *properly* delete it & its attachments
+            // TODO: what about MR views?
+            for (const revHash of path) {
+              await db1._purgeRev(docId, revHash);
+            }
+
+            resolve()
+          });
         });
       }
 
