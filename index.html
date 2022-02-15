@@ -69,19 +69,31 @@
       async function attemptPurge(rev = "6-3f7f6c55c27bf54c009b661607a9fe05") {
         const docId = "something";
 
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
           db1._getRevisionTree(docId, async (whatever, revs) => {
-            // get the path from the leaf to the latest node before a branching occurs
             const path = findPathToLeaf(revs, rev);
-            console.log("path", path);
+            console.log("purge path", path);
 
-            // now, iterate over each rev and *properly* delete it & its attachments
-            // TODO: what about MR views?
             for (const revHash of path) {
-              await db1._purgeRev(docId, revHash);
+              await (async () =>
+                new Promise((resolve) =>
+                  db1._purge(docId, revHash, (err) => {
+                    if (err) {
+                      console.error("error", err);
+                    } else {
+                      console.log("purge successful");
+                    }
+                    resolve();
+                  })
+                ))();
             }
 
-            resolve()
+            console.log(
+              "revs_info after purge",
+              await db1.get("something", { revs_info: true })
+            );
+
+            resolve();
           });
         });
       }
