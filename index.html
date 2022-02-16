@@ -20,9 +20,7 @@
     </p>
 
     <script>
-      let db1,
-        db2,
-        i = 0;
+      let db1, db2;
       const adapter = "indexeddb";
 
       async function clearDatabase(name) {
@@ -32,70 +30,10 @@
         } catch {}
       }
 
-      function findPathToLeaf(revs, targetRev) {
-        // `revs` has the same structure as what `revs_tree` has on e.g. the IndexedDB representation
-        // of the rev tree datastructure.
-        let path = [];
-        const toVisit = revs.slice();
-
-        let node;
-        while ((node = toVisit.pop())) {
-          const { pos, ids: tree } = node;
-          const rev = `${pos}-${tree[0]}`;
-          const branches = tree[2];
-
-          // just assuming we're already working on the path up towards our desired leaf.
-          path.push(rev);
-
-          // we've reached the leaf of our dreams, so return the computed path.
-          if (rev === targetRev) return path.reverse();
-
-          // this is based on the assumption that after we have a leaf (`branches.length == 0`), we handle the next
-          // branch. this is true for all branches other than the path leading to the winning rev (which is 6-a in
-          // the example below. i've added a reset condition for branching nodes (`branches.length > 1`) as well.
-          if (branches.length === 0 || branches.length > 1) {
-            path = [];
-          }
-
-          // as a next step, we push the branches of this node to `toVisit` for visiting it during the next iteration
-          for (let i = 0, len = branches.length; i < len; i++) {
-            toVisit.push({ pos: pos + 1, ids: branches[i] });
-          }
-        }
-        return path.reverse();
-      }
-
       // attempt to purge the doc used in the example below with a given rev.
       async function attemptPurge(rev = "6-3f7f6c55c27bf54c009b661607a9fe05") {
         const docId = "something";
-
-        return new Promise((resolve) => {
-          db1._getRevisionTree(docId, async (whatever, revs) => {
-            const path = findPathToLeaf(revs, rev);
-            console.log("purge path", path);
-
-            for (const revHash of path) {
-              await (async () =>
-                new Promise((resolve) =>
-                  db1._purge(docId, revHash, (err) => {
-                    if (err) {
-                      console.error("error", err);
-                    } else {
-                      console.log("purge successful");
-                    }
-                    resolve();
-                  })
-                ))();
-            }
-
-            console.log(
-              "revs_info after purge",
-              await db1.get("something", { revs_info: true })
-            );
-
-            resolve();
-          });
-        });
+        await db1.purge(docId, rev);
       }
 
       /*
