@@ -117,7 +117,7 @@
        * 5-a 5-df4a81cd21c75c71974d96e88a68fc2f
        * 6-a 6-3f7f6c55c27bf54c009b661607a9fe05 leaf
        * 5-c 5-0b84bfea5508e2020feb07384714a987
-       * 6-c 6-2d0ab4f4089a57c95d52bfd2d66b823d leaf
+       * 6-c 6-2d0ab4f4089a57c95d52bfd2d66b823d leaf (winning)
        * 3-b 3-43f6d5557d6de39488c64bb2c684ae7c
        * 4-b 4-a3b44168027079c2692a7d8eb35e9643 leaf
        */
@@ -143,8 +143,8 @@ Individual rev hashes:
 4-a 4-6e94d345514a08620c3176eea080d3ec
 5-a 5-df4a81cd21c75c71974d96e88a68fc2f
 6-a 6-3f7f6c55c27bf54c009b661607a9fe05 leaf
-5-c 5-0b84bfea5508e2020feb07384714a987
-6-c 6-2d0ab4f4089a57c95d52bfd2d66b823d leaf
+5-c 5-8d8c9361ac0021efb50fa6cd676e81a5
+6-c 6-65e076aa5095b0c6ae4184ea6cf2537a leaf (winning)
 3-b 3-43f6d5557d6de39488c64bb2c684ae7c
 4-b 4-a3b44168027079c2692a7d8eb35e9643 leaf`);
 
@@ -162,16 +162,16 @@ Individual rev hashes:
             _rev: doc_2a.rev,
             key: "3-a",
           });
-          const doc_3b = await db2.put({
-            _id: docId,
-            _rev: doc_2a.rev,
-            key: "3-b",
-          });
-
           const doc_4a = await db1.put({
             _id: docId,
             _rev: doc_3a.rev,
             key: "4-a",
+          });
+
+          const doc_3b = await db2.put({
+            _id: docId,
+            _rev: doc_2a.rev,
+            key: "3-b",
           });
           const doc_4b = await db2.put({
             _id: docId,
@@ -192,18 +192,18 @@ Individual rev hashes:
             key: "6-a",
           });
 
-          const doc_5b = await db2.put({
+          const doc_5c = await db2.put({
             _id: docId,
             _rev: doc_4a.rev,
-            key: "5-b",
+            key: "5-c",
           });
-          const doc_6b = await db2.put({
+          const doc_6c = await db2.put({
             _id: docId,
-            _rev: doc_5b.rev,
-            key: "6-b",
+            _rev: doc_5c.rev,
+            key: "6-c",
           });
 
-          await PouchDB.sync(db2, db1);
+          await PouchDB.sync(db1, db2);
         } catch (err) {
           console.error(err);
         }
