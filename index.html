@@ -161,6 +161,45 @@ Individual rev hashes:
             _rev: doc_6a.rev,
             key: "7-a",
           });
+
+          await PouchDB.sync(db1, db2);
+        } catch (err) {
+          console.error(err);
+        }
+      }
+
+      async function createSmolTree() {
+        try {
+          await clearDatabase("db1");
+          await clearDatabase("db2");
+
+          db1 = new PouchDB("db1", { adapter });
+          db2 = new PouchDB("db2", { adapter });
+          const docId = "something";
+
+          const doc_1a = await db1.put({ _id: docId, key: "1-a" });
+
+          await PouchDB.sync(db1, db2);
+
+          const doc_2a = await db1.put({
+            _id: docId,
+            _rev: doc_1a.rev,
+            key: "2-a",
+            // https://pouchdb.com/guides/attachments.html
+            _attachments: {
+              "myattachment.txt": {
+                content_type: "text/plain",
+                data: "aGVsbG8gd29ybGQ=",
+              },
+            },
+          });
+          const doc_2c = await db2.put({
+            _id: docId,
+            _rev: doc_1a.rev,
+            key: "2-c",
+          });
+
+          await PouchDB.sync(db1, db2);
         } catch (err) {
           console.error(err);
         }
