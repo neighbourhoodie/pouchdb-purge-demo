@@ -21,6 +21,8 @@
 
     <script>
       let db1, db2;
+      // defaults to 1000
+      const revs_limit = 100;
       const adapter = "indexeddb";
 
       async function clearDatabase(name) {
@@ -65,28 +67,28 @@
           await clearDatabase("db1");
           await clearDatabase("db2");
 
-          db1 = new PouchDB("db1", { adapter });
-          db2 = new PouchDB("db2", { adapter });
+          db1 = new PouchDB("db1", { adapter, revs_limit });
+          db2 = new PouchDB("db2", { adapter, revs_limit });
           const docId = "something";
 
           console.log(`Building the following rev tree for doc \`${docId}\`:
-1-a - 2-a -- 3-a - 4-a - 5-a - 6-a - 7-a
-          \\            \\
-           \\             5-c - 6-c
-             3-b - 4-b
+      1-a - 2-a -- 3-a - 4-a - 5-a - 6-a - 7-a
+                \\            \\
+                 \\             5-c - 6-c
+                   3-b - 4-b
 
-Individual rev hashes:
-1-a 1-9692d401ed2d3434827608278bdc36e3
-2-a 2-37aa033df08c21b4f56f1da2081e9e00
-3-a 3-df226cb9a2e5bdd3e6be009fd51f47c1
-4-a 4-6e94d345514a08620c3176eea080d3ec
-5-a 5-df4a81cd21c75c71974d96e88a68fc2f
-6-a 6-6a3a052f75136f93c255d3a5c3982fb8 attachment
-7-a 7-57e52e353c6cc66cc49ba4032bfdc091 leaf (winning)
-5-c 5-8d8c9361ac0021efb50fa6cd676e81a5
-6-c 6-65e076aa5095b0c6ae4184ea6cf2537a leaf
-3-b 3-43f6d5557d6de39488c64bb2c684ae7c
-4-b 4-a3b44168027079c2692a7d8eb35e9643 leaf`);
+      Individual rev hashes:
+      1-a 1-9692d401ed2d3434827608278bdc36e3
+      2-a 2-37aa033df08c21b4f56f1da2081e9e00
+      3-a 3-df226cb9a2e5bdd3e6be009fd51f47c1
+      4-a 4-6e94d345514a08620c3176eea080d3ec
+      5-a 5-df4a81cd21c75c71974d96e88a68fc2f
+      6-a 6-6a3a052f75136f93c255d3a5c3982fb8 attachment
+      7-a 7-57e52e353c6cc66cc49ba4032bfdc091 leaf (winning)
+      5-c 5-8d8c9361ac0021efb50fa6cd676e81a5
+      6-c 6-65e076aa5095b0c6ae4184ea6cf2537a leaf
+      3-b 3-43f6d5557d6de39488c64bb2c684ae7c
+      4-b 4-a3b44168027079c2692a7d8eb35e9643 leaf`);
 
           const doc_1a = await db1.put({ _id: docId, key: "1-a" });
           const doc_2a = await db1.put({
@@ -168,41 +170,54 @@ Individual rev hashes:
         }
       }
 
-      async function createSmolTree() {
-        try {
-          await clearDatabase("db1");
-          await clearDatabase("db2");
+      async function testViewPurge() {
+        await createTree();
 
-          db1 = new PouchDB("db1", { adapter });
-          db2 = new PouchDB("db2", { adapter });
-          const docId = "something";
-
-          const doc_1a = await db1.put({ _id: docId, key: "1-a" });
-
-          await PouchDB.sync(db1, db2);
-
-          const doc_2a = await db1.put({
-            _id: docId,
-            _rev: doc_1a.rev,
-            key: "2-a",
-            // https://pouchdb.com/guides/attachments.html
-            _attachments: {
-              "myattachment.txt": {
-                content_type: "text/plain",
-                data: "aGVsbG8gd29ybGQ=",
-              },
+        // create our MR view and map by doc.key
+        var ddoc = {
+          _id: "_design/my_index",
+          views: {
+            by_key: {
+              map: function (doc) {
+                emit(doc.key);
+              }.toString(),
             },
-          });
-          const doc_2c = await db2.put({
-            _id: docId,
-            _rev: doc_1a.rev,
-            key: "2-c",
-          });
+          },
+        };
+        await db1.put(ddoc);
+        console.log("before purge", await db1.query("my_index/by_key"));
 
-          await PouchDB.sync(db1, db2);
-        } catch (err) {
-          console.error(err);
-        }
+        let doc_7a = await db1.get("something");
+        await db1.purge("something", doc_7a._rev);
+
+        // trigger view update
+        await db1.put({ _id: "foobar", key: "1-a" });
+
+        // that should yield '6-c' for the 'something' doc.
+        console.log("after purge", await db1.query("my_index/by_key"));
+
+        // now we want to test an edge case: the doc has been
+        // edited since the last view update, and a purge
+        // has been issued as well.
+        const doc_6c = await db1.get("something");
+        const doc_7c = await db1.put({
+          _id: "something",
+          _rev: doc_6c._rev,
+          key: "7-c",
+        });
+        await db1.purge("something", doc_7c.rev);
+
+        // that should yield '4-b' for the 'something' doc.
+        console.log("after edit & purge", await db1.query("my_index/by_key"));
+
+        const doc_4b = await db1.get('something');
+        await db1.purge('something', doc_4b._rev);
+
+        // trigger view update
+        await db1.put({ _id: "barbaz", key: "1-a" });
+
+        // that should yield undefined/null
+        console.log("after edit & purge", await db1.query("my_index/by_key"));
       }
     </script>
   </body>
