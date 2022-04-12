@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <script src="pouchdb.js"></script>
     <script src="pouchdb.indexeddb.js"></script>
+    <script src="pouchdb.find.js"></script>
     <title>PouchDB purge demo</title>
   </head>
   <body>
@@ -210,14 +211,52 @@
         // that should yield '4-b' for the 'something' doc.
         console.log("after edit & purge", await db1.query("my_index/by_key"));
 
-        const doc_4b = await db1.get('something');
-        await db1.purge('something', doc_4b._rev);
+        const doc_4b = await db1.get("something");
+        await db1.purge("something", doc_4b._rev);
 
         // trigger view update
         await db1.put({ _id: "barbaz", key: "1-a" });
 
         // that should yield undefined/null
         console.log("after edit & purge", await db1.query("my_index/by_key"));
+      }
+
+      async function testFindPurge() {
+        await createTree();
+
+        await db1.createIndex({
+          index: { fields: ["key"] },
+        });
+
+        console.log(
+          "before purge",
+          await db1.find({
+            selector: {
+              key: { $eq: "7-a" },
+            },
+          }),
+          await db1.find({
+            selector: {
+              key: { $eq: "6-c" },
+            },
+          })
+        );
+
+        await db1.purge("something", (await db1.get("something"))._rev);
+
+        console.log(
+          "after purge",
+          await db1.find({
+            selector: {
+              key: { $eq: "7-a" },
+            },
+          }),
+          await db1.find({
+            selector: {
+              key: { $eq: "6-c" },
+            },
+          })
+        );
       }
     </script>
   </body>
