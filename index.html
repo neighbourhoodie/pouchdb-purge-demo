@@ -191,9 +191,6 @@
         let doc_7a = await db1.get("something");
         await db1.purge("something", doc_7a._rev);
 
-        // trigger view update
-        await db1.put({ _id: "foobar", key: "1-a" });
-
         // that should yield '6-c' for the 'something' doc.
         console.log("after purge", await db1.query("my_index/by_key"));
 
@@ -213,9 +210,6 @@
 
         const doc_4b = await db1.get("something");
         await db1.purge("something", doc_4b._rev);
-
-        // trigger view update
-        await db1.put({ _id: "barbaz", key: "1-a" });
 
         // that should yield undefined/null
         console.log("after edit & purge", await db1.query("my_index/by_key"));
