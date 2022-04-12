@@ -252,6 +252,24 @@
           })
         );
       }
+
+      async function testPurgedInfosLimit() {
+        await createTree();
+
+        await db1.purge("something", (await db1.get("something"))._rev);
+        let purges = await db1.get("_local/purges");
+        console.log("[purged_infos_limit] length", purges.purges.length);
+        for (let i = 0; i < 1000; i++) {
+          purges.purges.push({ i });
+        }
+        console.log("hacked to length", purges.purges.length);
+        await db1.put(purges);
+
+        await db1.purge("something", (await db1.get("something"))._rev);
+
+        purges = await db1.get("_local/purges");
+        console.log("[purged_infos_limit] length", purges.purges.length);
+      }
     </script>
   </body>
 </html>
